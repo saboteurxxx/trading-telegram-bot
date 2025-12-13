@@ -1,11 +1,11 @@
-# webhook_bot.py — рабочая версия для Render.com
+# webhook_bot.py — финальная версия для Render.com
 import os
 import sys
 import traceback
 from flask import Flask, request, jsonify
 import requests
 
-# Добавляем путь для импорта ваших модулей
+# Добавляем путь текущей директории для импорта ваших модулей
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
@@ -14,11 +14,11 @@ if current_dir not in sys.path:
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 
 if not TELEGRAM_BOT_TOKEN:
-    raise RuntimeError("❌ Переменная TELEGRAM_BOT_TOKEN не задана в окружении Render")
+    raise RuntimeError("❌ TELEGRAM_BOT_TOKEN не задан в Environment Variables на Render")
 
-# Конфигурация
+# Конфигурация Telegram API
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
-is_running = False
+is_running = False  # Флаг выполнения анализа
 
 # Инициализация Flask
 app = Flask(__name__)
@@ -28,11 +28,7 @@ def send_message(chat_id: int, text: str):
     try:
         requests.post(
             f"{TELEGRAM_API_URL}/sendMessage",
-            json={
-                "chat_id": chat_id,
-                "text": text,
-                "parse_mode": "HTML"
-            },
+            json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
             timeout=10
         )
     except Exception as e:
@@ -67,29 +63,32 @@ def telegram_webhook():
         text = message.get("text", "").strip()
 
         if text == "/start":
-            send_message(chat_id, "🚀 Бот запущен! Команды: /run, /status, /price")
+            send_message(chat_id, "🚀 Бот запущен! Используйте /run для анализа, /status — статус, /price — цена BTC.")
 
         elif text == "/run":
-            send_message(chat_id, "🔄 Запускаю анализ (30–60 сек)...")
+            send_message(chat_id, "🔄 Запускаю торговый анализ (30–60 сек)...")
             result = run_trading_analysis()
             if len(result) > 4000:
-                result = result[:4000] + "\n... (сокращено)"
+                result = result[:4000] + "\n... (результат сокращён)"
             send_message(chat_id, f"📊 Результат:\n{result}")
 
         elif text == "/status":
-            status = "⏳ В процессе..." if is_running else "✅ Готов"
+            status = "⏳ Анализ в процессе..." if is_running else "✅ Готов к работе"
             send_message(chat_id, status)
 
         elif text == "/price":
             try:
                 from utils.data_manager import DataManager
                 price = DataManager().get_current_price("BTC/USDT")
-                send_message(chat_id, f"💰 BTC/USDT: ${price:.2f}" if price else "❌ Цена недоступна")
+                if price:
+                    send_message(chat_id, f"💰 BTC/USDT: ${price:.2f}")
+                else:
+                    send_message(chat_id, "❌ Не удалось получить цену")
             except Exception as e:
-                send_message(chat_id, f"❌ Ошибка: {e}")
+                send_message(chat_id, f"❌ Ошибка: {str(e)}")
 
         else:
-            send_message(chat_id, "❓ Используйте: /start, /run, /status, /price")
+            send_message(chat_id, "❓ Неизвестная команда. Используйте /start.")
 
         return jsonify({"ok": True})
 
@@ -100,7 +99,7 @@ def telegram_webhook():
 
 @app.route("/health")
 def health():
-    """Проверка работоспособности (для Render)"""
+    """Эндпоинт для проверки работоспособности (Render использует его)"""
     return "OK", 200
 
 if __name__ == "__main__":
